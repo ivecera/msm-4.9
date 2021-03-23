@@ -14,6 +14,8 @@
 #include "cam_cci_core.h"
 #include "cam_cci_dev.h"
 
+#include <soc/qcom/socinfo.h>
+
 static int32_t cam_cci_convert_type_to_num_bytes(
 	enum camera_sensor_i2c_type type)
 {
@@ -471,8 +473,9 @@ static int32_t cam_cci_calc_cmd_len(struct cci_device *cci_dev,
 		for (i = 0; i < pack_max_len;) {
 			if (cmd->delay || ((cmd - i2c_cmd) >= (cmd_size - 1)))
 				break;
-			if (cmd->reg_addr + 1 ==
-				(cmd+1)->reg_addr) {
+			if ((c_ctrl->cci_info->sid != 0x2d) &&
+			    (cmd->reg_addr + 1 ==
+			     (cmd+1)->reg_addr)) { //for f3b s5kgd1 cci timeout problem
 				len += data_len;
 				if (len > cci_dev->payload_size) {
 					len = len - data_len;
@@ -561,6 +564,8 @@ void cam_cci_get_clk_rates(struct cci_device *cci_dev,
 	}
 }
 
+extern uint32_t g_operation_mode;
+extern uint32_t hw_version_platform;
 static int32_t cam_cci_set_clk_param(struct cci_device *cci_dev,
 	struct cam_cci_ctrl *c_ctrl)
 {
@@ -570,6 +575,16 @@ static int32_t cam_cci_set_clk_param(struct cci_device *cci_dev,
 	struct cam_hw_soc_info *soc_info =
 		&cci_dev->soc_info;
 	void __iomem *base = soc_info->reg_map[0].mem_base;
+
+	if ((hw_version_platform == QCOM_HW_PLATFORM_PYXIS) || (hw_version_platform == QCOM_HW_PLATFORM_VELA)) {
+		if (g_operation_mode == 0x8006) {
+			i2c_freq_mode = I2C_FAST_PLUS_MODE;
+			CAM_DBG(CAM_CCI, "face_unlock mode, set i2c_freq_mode to fast plus mode.");
+		} else {
+			i2c_freq_mode = c_ctrl->cci_info->i2c_freq_mode;
+			CAM_DBG(CAM_CCI, "normal mode, set i2c_freq_mode according to driver's setting.");
+		}
+	}
 
 	if ((i2c_freq_mode >= I2C_MAX_MODES) || (i2c_freq_mode < 0)) {
 		CAM_ERR(CAM_CCI, "invalid i2c_freq_mode = %d", i2c_freq_mode);
@@ -1518,14 +1533,14 @@ static int32_t cam_cci_i2c_set_sync_prms(struct v4l2_subdev *sd,
 	return rc;
 }
 
-static int32_t cam_cci_release(struct v4l2_subdev *sd)
+static int32_t cam_cci_release(struct v4l2_subdev *sd, struct cam_cci_ctrl *c_ctrl)
 {
 	uint8_t rc = 0;
 	struct cci_device *cci_dev;
 
 	cci_dev = v4l2_get_subdevdata(sd);
 
-	rc = cam_cci_soc_release(cci_dev);
+	rc = cam_cci_soc_release(cci_dev, c_ctrl);
 	if (rc < 0) {
 		CAM_ERR(CAM_CCI, "Failed in releasing the cci: %d", rc);
 		return rc;
@@ -1541,7 +1556,7 @@ static int32_t cam_cci_write(struct v4l2_subdev *sd,
 	struct cci_device *cci_dev;
 	enum cci_i2c_master_t master;
 	struct cam_cci_master_info *cci_master_info;
-	uint32_t i;
+	/*uint32_t i;*/
 
 	cci_dev = v4l2_get_subdevdata(sd);
 	if (!cci_dev || !c_ctrl) {
@@ -1575,14 +1590,14 @@ static int32_t cam_cci_write(struct v4l2_subdev *sd,
 	case MSM_CCI_I2C_WRITE:
 	case MSM_CCI_I2C_WRITE_SEQ:
 	case MSM_CCI_I2C_WRITE_BURST:
-		for (i = 0; i < NUM_QUEUES; i++) {
+		/* for (i = 0; i < NUM_QUEUES; i++) {
 			if (mutex_trylock(&cci_master_info->mutex_q[i])) {
 				rc = cam_cci_i2c_write(sd, c_ctrl, i,
 					MSM_SYNC_DISABLE);
 				mutex_unlock(&cci_master_info->mutex_q[i]);
 				return rc;
 			}
-		}
+		} */
 		mutex_lock(&cci_master_info->mutex_q[PRIORITY_QUEUE]);
 		rc = cam_cci_i2c_write(sd, c_ctrl,
 			PRIORITY_QUEUE, MSM_SYNC_DISABLE);
@@ -1622,7 +1637,7 @@ int32_t cam_cci_core_cfg(struct v4l2_subdev *sd,
 		break;
 	case MSM_CCI_RELEASE:
 		mutex_lock(&cci_dev->init_mutex);
-		rc = cam_cci_release(sd);
+		rc = cam_cci_release(sd, cci_ctrl);
 		mutex_unlock(&cci_dev->init_mutex);
 		break;
 	case MSM_CCI_I2C_READ:

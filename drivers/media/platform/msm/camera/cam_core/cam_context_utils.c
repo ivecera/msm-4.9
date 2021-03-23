@@ -542,7 +542,8 @@ int32_t cam_context_flush_ctx_to_hw(struct cam_context *ctx)
 	int rc = 0;
 	bool free_req;
 
-	CAM_DBG(CAM_CTXT, "[%s] E: NRT flush ctx", ctx->dev_name);
+	CAM_DBG(CAM_CTXT, "[%s][%d] E: NRT flush ctx",
+		ctx->dev_name, ctx->ctx_id);
 	memset(&flush_args, 0, sizeof(flush_args));
 
 	/*
