@@ -521,7 +521,7 @@ static int qpnp_haptics_auto_res_enable(struct hap_chip *chip, bool enable)
 	if (auto_res_mode_qwd && enable)
 		usleep_range(delay_us, delay_us + 1);
 
-	if (socinfo_get_platform_type() == QCOM_HW_PLATFORM_GRUS)
+	if (socinfo_get_platform_type() == QCOM_HW_PLATFORM_GRUS) {
 		pr_debug("hardcode val=0 upon Qualcomm change solution in HARDWARE_PLATFORM_GRUS;\n");
 		enableval = 0;
 	}
